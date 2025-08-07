@@ -9,9 +9,8 @@ const Registration = ({ onRegisterTeams }) => {
   const [teams, setTeams] = useState([]);
   const [newTeam, setNewTeam] = useState({
     id: '',
-    name: '',
     captain: '',
-    players: ['', '', '', ''],
+    players: ['', '', ''], // Only for players 2, 3, 4
     attended: true
   });
   const [isEditing, setIsEditing] = useState(false);
@@ -30,7 +29,6 @@ const Registration = ({ onRegisterTeams }) => {
   };
 
   const generateUniqueId = () => {
-    // A more robust unique ID generator could be used here, e.g., uuid library
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
   };
 
@@ -40,24 +38,41 @@ const Registration = ({ onRegisterTeams }) => {
       return;
     }
 
-    if (!newTeam.name.trim() || !newTeam.captain.trim()) {
-      setError('El nombre del equipo y el capitán son obligatorios.');
+    if (!newTeam.captain.trim()) {
+      setError('El nombre del capitán es obligatorio.');
       return;
     }
 
+    const finalTeam = {
+      ...newTeam,
+      id: isEditing ? newTeam.id : generateUniqueId(),
+      name: newTeam.captain, // Team name is captain's name
+      players: [newTeam.captain, ...newTeam.players.filter(p => p.trim() !== '')]
+    };
+
     if (isEditing) {
-      setTeams(prev => prev.map(team => team.id === newTeam.id ? newTeam : team));
+      setTeams(prev => prev.map(team => team.id === finalTeam.id ? finalTeam : team));
       setIsEditing(false);
     } else {
-      setTeams(prev => [...prev, { ...newTeam, id: generateUniqueId() }]);
+      setTeams(prev => [...prev, finalTeam]);
     }
-    setNewTeam({ id: '', name: '', captain: '', players: ['', '', '', ''], attended: true });
+    setNewTeam({ id: '', captain: '', players: ['', '', ''], attended: true });
     setError('');
   };
 
   const handleEditTeam = (id) => {
     const teamToEdit = teams.find(team => team.id === id);
-    setNewTeam(teamToEdit);
+    // When editing, we need to populate the form correctly
+    const otherPlayers = teamToEdit.players.slice(1);
+    while (otherPlayers.length < 3) {
+      otherPlayers.push('');
+    }
+    setNewTeam({
+        id: teamToEdit.id,
+        captain: teamToEdit.captain,
+        players: otherPlayers,
+        attended: teamToEdit.attended
+    });
     setIsEditing(true);
     setError('');
   };
@@ -107,26 +122,19 @@ const Registration = ({ onRegisterTeams }) => {
           )}
           <div className="space-y-4">
             <Input
-              label="Nombre del Equipo"
-              name="name"
-              value={newTeam.name}
-              onChange={handleInputChange}
-              placeholder="Ej: Los Rodadores"
-            />
-            <Input
-              label="Nombre del Capitán (Nombre y Apellido)"
+              label="Nombre del Capitán (Este será el nombre del equipo)"
               name="captain"
               value={newTeam.captain}
               onChange={handleInputChange}
               placeholder="Ej: Juan Pérez"
             />
-            <p className="text-gray-600 font-medium mt-4 mb-2">Jugadores (hasta 4):</p>
+            <p className="text-gray-600 font-medium mt-4 mb-2">Otros Jugadores (hasta 3 más):</p>
             {newTeam.players.map((player, index) => (
               <Input
                 key={index}
                 value={player}
                 onChange={(e) => handlePlayerChange(index, e.target.value)}
-                placeholder={`Jugador ${index + 1}`}
+                placeholder={`Jugador ${index + 2}`}
               />
             ))}
             <div className="flex items-center justify-between bg-white p-3 rounded-lg border">
@@ -159,7 +167,7 @@ const Registration = ({ onRegisterTeams }) => {
             {isEditing && (
               <Button onClick={() => {
                 setIsEditing(false);
-                setNewTeam({ id: '', name: '', captain: '', players: ['', '', '', ''], attended: true });
+                setNewTeam({ id: '', captain: '', players: ['', '', ''], attended: true });
                 setError('');
               }} className="w-full" primary={false}>
                 <XCircle className="w-5 h-5" /> Cancelar Edición
