@@ -120,6 +120,18 @@ const Tournament = ({ registeredTeams }) => {
       match.id === matchId ? { ...match, [`score${teamNum}`]: value } : match
     );
     setMatches(updatedMatches);
+
+    if (tournamentPhase === 'knockout') {
+      const updatedBrackets = { ...knockoutBrackets };
+      for (const category in updatedBrackets) {
+        const matchIndex = updatedBrackets[category].findIndex(m => m.id === matchId);
+        if (matchIndex > -1) {
+          updatedBrackets[category][matchIndex][`score${teamNum}`] = value;
+          break;
+        }
+      }
+      setKnockoutBrackets(updatedBrackets);
+    }
   };
 
   const recordMatchResult = (matchId) => {
@@ -207,20 +219,34 @@ const Tournament = ({ registeredTeams }) => {
     setTeams(updatedTeams);
     setTournamentPhase('reclassification_pending');
     setMatches([]);
+    setShowRanking(true); // Automatically show ranking for Day 2 start
   };
 
   const generateReclassificationMatches = () => {
     const teamsA = teams.filter(t => t.category === 'A').sort((a, b) => a.day1Rank - b.day1Rank);
     const teamsB = teams.filter(t => t.category === 'B').sort((a, b) => a.day1Rank - b.day1Rank);
-    const makeMatches = (group) => {
+    const teamsC = teams.filter(t => t.category === 'C').sort((a, b) => a.day1Rank - b.day1Rank);
+
+    const makeMatches = (group, type) => {
       const newMatches = [];
       const mid = group.length / 2;
       for (let i = 0; i < mid; i++) {
-        newMatches.push({ id: `reclass-${group[i].category}-${i}`, team1: group[i], team2: group[group.length - 1 - i], score1: '', score2: '', winnerId: null, played: false });
+        newMatches.push({
+          id: `${type}-${group[i].category}-${i}`,
+          team1: group[i],
+          team2: group[group.length - 1 - i],
+          score1: '', score2: '', winnerId: null, played: false,
+          roundName: type === 'reclass' ? 'Reclasificación' : 'Cuartos de Final'
+        });
       }
       return newMatches;
     };
-    setMatches([...makeMatches(teamsA), ...makeMatches(teamsB)]);
+
+    const matchesA = makeMatches(teamsA, 'reclass');
+    const matchesB = makeMatches(teamsB, 'reclass');
+    const matchesC = makeMatches(teamsC, 'knockout');
+
+    setMatches([...matchesA, ...matchesB, ...matchesC]);
     setTournamentPhase('reclassification');
   };
 
