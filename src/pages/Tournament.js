@@ -187,7 +187,6 @@ const Tournament = ({ registeredTeams }) => {
       'Coeficiente': team.coefficient.toFixed(2),
       'Categoría': team.category || 'N/A',
     }));
-
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Ranking Torneo');
