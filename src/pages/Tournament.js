@@ -5,15 +5,16 @@ import { Shuffle, Play, ListOrdered, Award, UserCheck, FileDown } from 'lucide-r
 import Button from '../components/Button';
 import Input from '../components/Input';
 import Bracket from '../components/Bracket';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
 const Tournament = ({ registeredTeams }) => {
-  const [teams, setTeams] = useState([]);
-  const [currentRound, setCurrentRound] = useState(0);
-  const [matches, setMatches] = useState([]);
+  const [teams, setTeams] = useLocalStorage('petanca-teams', []);
+  const [currentRound, setCurrentRound] = useLocalStorage('petanca-round', 0);
+  const [matches, setMatches] = useLocalStorage('petanca-matches', []);
   const [showRanking, setShowRanking] = useState(false);
-  const [byeTeam, setByeTeam] = useState(null);
-  const [tournamentPhase, setTournamentPhase] = useState('swiss'); // swiss, reclassification_pending, reclassification, knockout
-  const [knockoutBrackets, setKnockoutBrackets] = useState(null);
+  const [byeTeam, setByeTeam] = useLocalStorage('petanca-bye', null);
+  const [tournamentPhase, setTournamentPhase] = useLocalStorage('petanca-phase', 'swiss');
+  const [knockoutBrackets, setKnockoutBrackets] = useLocalStorage('petanca-knockout', null);
 
   useEffect(() => {
     if (registeredTeams.length > 0 && teams.length === 0) {

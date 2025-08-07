@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import Header from './components/Header';
 import Home from './pages/Home';
 import Registration from './pages/Registration';
 import Tournament from './pages/Tournament';
+import { useLocalStorage } from './hooks/useLocalStorage';
 
 const AppContent = () => {
-  const [registeredTeams, setRegisteredTeams] = useState([]);
+  const [registeredTeams, setRegisteredTeams] = useLocalStorage('petancapro-teams', []);
   const navigate = useNavigate();
 
   const handleRegisterTeams = (teams) => {

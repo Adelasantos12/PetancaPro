@@ -1,8 +1,24 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Trophy, Users } from 'lucide-react';
+import { Trophy, RotateCcw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const Header = ({ title, subtitle }) => {
+  const navigate = useNavigate();
+
+  const handleReset = () => {
+    if (window.confirm('¿Estás seguro de que quieres reiniciar el torneo? Todo el progreso se perderá.')) {
+      // Clear all localStorage keys related to the app
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('petanca')) {
+          localStorage.removeItem(key);
+        }
+      });
+      navigate('/');
+      window.location.reload(); // Force a full reload to clear all state
+    }
+  };
+
   return (
     <motion.header
       className="bg-gradient-to-r from-blue-600 to-purple-700 text-white p-6 rounded-b-3xl shadow-lg"
@@ -18,14 +34,15 @@ const Header = ({ title, subtitle }) => {
             <p className="text-blue-100">{subtitle}</p>
           </div>
         </div>
-        <motion.div
-          className="flex items-center gap-2 bg-white/20 px-4 py-2 rounded-full"
+        <motion.button
+          onClick={handleReset}
+          className="flex items-center gap-2 bg-red-500/80 hover:bg-red-500 text-white px-4 py-2 rounded-xl font-semibold transition-all duration-300"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          <Users className="w-5 h-5" />
-          <span className="font-semibold">40 Equipos</span>
-        </motion.div>
+          <RotateCcw className="w-5 h-5" />
+          <span>Reiniciar Torneo</span>
+        </motion.button>
       </div>
     </motion.header>
   );
