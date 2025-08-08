@@ -26,7 +26,7 @@ const Home = () => {
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.4, duration: 0.5 }}
       >
-        Tu asistente definitivo para gestionar torneos de petanca. Registra equipos, organiza rondas suizas y sigue el progreso de cada partida.
+        Tu asistente definitivo para gestionar torneos de petanca
       </motion.p>
       <motion.div
         className="flex flex-col sm:flex-row gap-4"

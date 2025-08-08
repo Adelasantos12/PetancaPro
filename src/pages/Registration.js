@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { PlusCircle, Save, XCircle, AlertCircle } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import TeamCard from '../components/TeamCard';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
-const Registration = ({ onRegisterTeams }) => {
-  const [teams, setTeams] = useState([]);
+const Registration = () => {
+  const [teams, setTeams] = useLocalStorage('petancapro-teams', []);
+  const navigate = useNavigate();
   const [newTeam, setNewTeam] = useState({
     id: '',
     captain: '',
@@ -86,7 +89,9 @@ const Registration = ({ onRegisterTeams }) => {
       setError('Por favor, registra al menos un equipo.');
       return;
     }
-    onRegisterTeams(teams);
+    // No need to pass teams up, they are already in localStorage.
+    // Just navigate to the tournament page.
+    navigate('/tournament');
     setError('');
   };
 

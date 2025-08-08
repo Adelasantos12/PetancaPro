@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
-import { Shuffle, Play, ListOrdered, Award, UserCheck, FileDown } from 'lucide-react';
+import { Shuffle, Play, ListOrdered, Award, UserCheck, FileDown, Pencil } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import Bracket from '../components/Bracket';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 
-const Tournament = ({ registeredTeams }) => {
+const Tournament = () => {
   const [teams, setTeams] = useLocalStorage('petanca-teams', []);
   const [currentRound, setCurrentRound] = useLocalStorage('petanca-round', 0);
   const [matches, setMatches] = useLocalStorage('petanca-matches', []);
@@ -15,25 +15,33 @@ const Tournament = ({ registeredTeams }) => {
   const [byeTeam, setByeTeam] = useLocalStorage('petanca-bye', null);
   const [tournamentPhase, setTournamentPhase] = useLocalStorage('petanca-phase', 'swiss');
   const [knockoutBrackets, setKnockoutBrackets] = useLocalStorage('petanca-knockout', null);
+  const [editingMatchId, setEditingMatchId] = useState(null);
+  const [matchHistory, setMatchHistory] = useLocalStorage('petanca-match-history', []);
 
   useEffect(() => {
-    if (registeredTeams.length > 0 && teams.length === 0) {
-      setTeams(registeredTeams
-        .filter(team => team.attended)
-        .map(team => ({
-          ...team,
-          wins: 0,
-          losses: 0,
-          points: 0,
-          scoreDifference: 0,
-          coefficient: 0,
-          pastOpponents: [],
-          receivedBye: false,
-          category: null,
-          day1Rank: 0,
-        })));
+    // When the component mounts, check if a tournament is already in progress.
+    // If not (i.e., round is 0), initialize the tournament teams
+    // from the list of registered teams in localStorage.
+    if (currentRound === 0) {
+      const registeredTeams = JSON.parse(localStorage.getItem('petancapro-teams') || '[]');
+      if (registeredTeams.length > 0) {
+        setTeams(registeredTeams
+          .filter(team => team.attended)
+          .map(team => ({
+            ...team,
+            wins: 0,
+            losses: 0,
+            points: 0,
+            scoreDifference: 0,
+            coefficient: 0,
+            pastOpponents: [],
+            receivedBye: false,
+            category: null,
+            day1Rank: 0,
+          })));
+      }
     }
-  }, [registeredTeams, teams.length]);
+  }, []); // This effect should only run once on mount
 
   const shuffleArray = (array) => {
     let currentIndex = array.length, randomIndex;
@@ -46,10 +54,28 @@ const Tournament = ({ registeredTeams }) => {
   };
   
   const getRankedTeams = () => {
-    return [...teams].sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
-      return b.coefficient - a.coefficient;
-    });
+    const sortedTeams = [...teams];
+    const categoryOrder = { 'A': 1, 'AA': 2, 'B': 3, 'BB': 4, 'C': 5 };
+
+    // After reclassification, group by category first
+    if (tournamentPhase === 'reclassification_pending' || tournamentPhase === 'reclassification' || tournamentPhase === 'knockout') {
+      sortedTeams.sort((a, b) => {
+        const orderA = categoryOrder[a.category] || 99;
+        const orderB = categoryOrder[b.category] || 99;
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        // If in the same category, sort by day1Rank
+        return a.day1Rank - b.day1Rank;
+      });
+    } else {
+      // Standard ranking for Swiss rounds
+      sortedTeams.sort((a, b) => {
+        if (b.points !== a.points) return b.points - a.points;
+        return b.coefficient - a.coefficient;
+      });
+    }
+    return sortedTeams;
   };
 
   const generateMatches = () => {
@@ -111,6 +137,7 @@ const Tournament = ({ registeredTeams }) => {
       }
     }
     setMatches(newMatches);
+    setMatchHistory(prev => [...prev, ...newMatches]);
     setCurrentRound(prev => prev + 1);
     setShowRanking(false);
   };
@@ -134,56 +161,110 @@ const Tournament = ({ registeredTeams }) => {
     }
   };
 
-  const recordMatchResult = (matchId) => {
-    const matchIndex = matches.findIndex(m => m.id === matchId);
-    if (matchIndex === -1) return;
-    
-    let matchToEnd = { ...matches[matchIndex] };
+  const recordMatchResult = (matchId, isEditing = false) => {
+    // Find the match in the current round's matches
+    const currentMatchIndex = matches.findIndex(m => m.id === matchId);
+    if (currentMatchIndex === -1) return;
 
-    if (matchToEnd.score1 === '' || matchToEnd.score2 === '') { alert('Por favor, introduce una puntuación para ambos equipos.'); return; }
-    const score1 = parseInt(matchToEnd.score1, 10);
-    const score2 = parseInt(matchToEnd.score2, 10);
+    let matchToUpdate = { ...matches[currentMatchIndex] };
+
+    // Validate scores
+    if (matchToUpdate.score1 === '' || matchToUpdate.score2 === '') { alert('Por favor, introduce una puntuación para ambos equipos.'); return; }
+    const score1 = parseInt(matchToUpdate.score1, 10);
+    const score2 = parseInt(matchToUpdate.score2, 10);
     if (isNaN(score1) || isNaN(score2)) { alert('Por favor, introduce puntuaciones válidas.'); return; }
     if (score1 === score2) { alert('Empate no permitido en petanca. Debe haber un ganador.'); return; }
 
-    const winnerId = score1 > score2 ? matchToEnd.team1.id : matchToEnd.team2.id;
-    matchToEnd.winnerId = winnerId;
-    matchToEnd.played = true;
-    
-    const updatedMatches = [...matches];
-    updatedMatches[matchIndex] = matchToEnd;
-    setMatches(updatedMatches);
+    // Update the match details
+    const winnerId = score1 > score2 ? matchToUpdate.team1.id : matchToUpdate.team2.id;
+    matchToUpdate.winnerId = winnerId;
+    matchToUpdate.played = true;
 
-    setTeams(prevTeams => prevTeams.map(team => {
-      if (team.id !== matchToEnd.team1.id && team.id !== matchToEnd.team2.id) return team;
-      if (tournamentPhase === 'swiss') {
-        const points = (team.id === winnerId) ? 1 : 0;
-        const diff = (team.id === matchToEnd.team1.id) ? (score1 - score2) : (score2 - score1);
-        const newPoints = team.points + points;
-        const newScoreDifference = team.scoreDifference + diff;
-        return { ...team, wins: team.wins + points, losses: team.losses + (1 - points), points: newPoints, scoreDifference: newScoreDifference, coefficient: newPoints + newScoreDifference, pastOpponents: [...team.pastOpponents, team.id === matchToEnd.team1.id ? matchToEnd.team2.id : matchToEnd.team1.id] };
+    // Update the match in the current round's state
+    const updatedCurrentMatches = [...matches];
+    updatedCurrentMatches[currentMatchIndex] = matchToUpdate;
+    setMatches(updatedCurrentMatches);
+
+    // Update the match in the persistent history
+    const historyIndex = matchHistory.findIndex(m => m.id === matchId);
+    const updatedHistory = [...matchHistory];
+    if (historyIndex > -1) {
+      updatedHistory[historyIndex] = matchToUpdate;
+    } else {
+      // This should not happen if generation logic is correct, but as a fallback
+      updatedHistory.push(matchToUpdate);
+    }
+    setMatchHistory(updatedHistory);
+
+    // Get the IDs of the teams whose stats need recalculation
+    const teamsToUpdateIds = [matchToUpdate.team1.id, matchToUpdate.team2.id];
+
+    // Recalculate stats from the single source of truth: the updated match history
+    const updatedTeams = teams.map(team => {
+      if (!teamsToUpdateIds.includes(team.id)) {
+        return team;
       }
-      if (tournamentPhase === 'reclassification') {
+
+      // Reset stats for recalculation
+      let newWins = 0, newLosses = 0, newPoints = 0, newScoreDifference = 0;
+      let newPastOpponents = [];
+
+      // Recalculate using the full, updated history
+      updatedHistory.forEach(playedMatch => {
+        if (playedMatch.played && (playedMatch.team1.id === team.id || playedMatch.team2.id === team.id)) {
+          const isTeam1 = playedMatch.team1.id === team.id;
+          newPastOpponents.push(isTeam1 ? playedMatch.team2.id : playedMatch.team1.id);
+
+          if (playedMatch.winnerId === team.id) {
+            newWins++;
+            newPoints++;
+          } else {
+            newLosses++;
+          }
+          const s1 = parseInt(playedMatch.score1, 10);
+          const s2 = parseInt(playedMatch.score2, 10);
+          if(!isNaN(s1) && !isNaN(s2)) {
+            newScoreDifference += isTeam1 ? (s1 - s2) : (s2 - s1);
+          }
+        }
+      });
+      
+      const updatedTeam = {
+        ...team,
+        wins: newWins,
+        losses: newLosses,
+        points: newPoints,
+        scoreDifference: newScoreDifference,
+        coefficient: newPoints + newScoreDifference,
+        pastOpponents: newPastOpponents,
+      };
+
+      // Handle reclassification category update
+      if (tournamentPhase === 'reclassification' && matchToUpdate.id === matchId) {
         const won = team.id === winnerId;
-        let newCategory = team.category;
-        if (team.category === 'A') newCategory = won ? 'A' : 'AA';
-        if (team.category === 'B') newCategory = won ? 'B' : 'BB';
-        return { ...team, category: newCategory };
+        if (team.category === 'A') updatedTeam.category = won ? 'A' : 'AA';
+        if (team.category === 'B') updatedTeam.category = won ? 'B' : 'BB';
       }
-      return team;
-    }));
+
+      return updatedTeam;
+    });
+
+    setTeams(updatedTeams);
     
+    // Update knockout brackets if necessary
     if (tournamentPhase === 'knockout') {
       const updatedBrackets = { ...knockoutBrackets };
       for (const category in updatedBrackets) {
         const idx = updatedBrackets[category].findIndex(m => m.id === matchId);
         if (idx > -1) {
-          updatedBrackets[category][idx] = matchToEnd;
+          updatedBrackets[category][idx] = matchToUpdate;
           break;
         }
       }
       setKnockoutBrackets(updatedBrackets);
     }
+
+    setEditingMatchId(null); // Exit editing mode
   };
 
   const allMatchesPlayed = matches.length > 0 && matches.every(match => match.played);
@@ -245,14 +326,17 @@ const Tournament = ({ registeredTeams }) => {
     const matchesA = makeMatches(teamsA, 'reclass');
     const matchesB = makeMatches(teamsB, 'reclass');
     const matchesC = makeMatches(teamsC, 'knockout');
+    const allNewMatches = [...matchesA, ...matchesB, ...matchesC];
 
-    setMatches([...matchesA, ...matchesB, ...matchesC]);
+    setMatches(allNewMatches);
+    setMatchHistory(prev => [...prev, ...allNewMatches]);
     setTournamentPhase('reclassification');
   };
   
   const generateKnockoutBrackets = () => {
     const categories = ['A', 'AA', 'B', 'BB', 'C'];
     const brackets = {};
+    const allNewMatches = [];
     categories.forEach(category => {
       const categoryTeams = teams.filter(t => t.category === category).sort((a, b) => a.day1Rank - b.day1Rank);
       const newMatches = [];
@@ -263,25 +347,52 @@ const Tournament = ({ registeredTeams }) => {
         }
       }
       brackets[category] = newMatches;
+      allNewMatches.push(...newMatches);
     });
     setKnockoutBrackets(brackets);
     setTournamentPhase('knockout');
-    setMatches(Object.values(brackets).flat());
+    setMatches(allNewMatches);
+    setMatchHistory(prev => [...prev, ...allNewMatches]);
   };
 
-  const renderMatch = (match) => (
-    <motion.div key={match.id} className="bg-white rounded-xl shadow-md p-4 border border-gray-200 flex flex-col md:flex-row items-center justify-between gap-4" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
-      <div className="flex-1 text-center md:text-left"><p className="font-bold text-lg text-gray-800">{match.team1.name}</p><p className="text-sm text-gray-500">Capitán: {match.team1.captain}</p></div>
-      <div className="flex items-center gap-2">
-        <Input type="number" value={match.score1} onChange={(e) => handleScoreChange(match.id, 1, e.target.value)} className="w-20 text-center" disabled={match.played} />
-        <span className="font-bold text-xl text-gray-600">vs</span>
-        <Input type="number" value={match.score2} onChange={(e) => handleScoreChange(match.id, 2, e.target.value)} className="w-20 text-center" disabled={match.played} />
-      </div>
-      <div className="flex-1 text-center md:text-right"><p className="font-bold text-lg text-gray-800">{match.team2.name}</p><p className="text-sm text-gray-500">Capitán: {match.team2.captain}</p></div>
-      {!match.played && <Button onClick={() => recordMatchResult(match.id)} primary={true} className="w-full md:w-auto"><Play className="w-4 h-4" /> Registrar</Button>}
-      {match.played && <div className="text-green-600 font-semibold flex items-center gap-2"><Award className="w-5 h-5" /><span>Ganador: {match.winnerId === match.team1.id ? match.team1.name : match.team2.name}</span></div>}
-    </motion.div>
-  );
+  const renderMatch = (match) => {
+    const isEditing = editingMatchId === match.id;
+    const isPlayed = match.played && !isEditing;
+
+    return (
+      <motion.div key={match.id} className="bg-white rounded-xl shadow-md p-4 border border-gray-200 flex flex-col md:flex-row items-center justify-between gap-4" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
+        <div className="flex-1 text-center md:text-left"><p className="font-bold text-lg text-gray-800">{match.team1.name}</p><p className="text-sm text-gray-500">Capitán: {match.team1.captain}</p></div>
+        <div className="flex items-center gap-2">
+          <Input type="number" value={match.score1} onChange={(e) => handleScoreChange(match.id, 1, e.target.value)} className="w-20 text-center" disabled={isPlayed} />
+          <span className="font-bold text-xl text-gray-600">vs</span>
+          <Input type="number" value={match.score2} onChange={(e) => handleScoreChange(match.id, 2, e.target.value)} className="w-20 text-center" disabled={isPlayed} />
+        </div>
+        <div className="flex-1 text-center md:text-right"><p className="font-bold text-lg text-gray-800">{match.team2.name}</p><p className="text-sm text-gray-500">Capitán: {match.team2.captain}</p></div>
+        
+        <div className="w-full md:w-auto flex gap-2">
+          {!match.played || isEditing ? (
+            <>
+              <Button onClick={() => recordMatchResult(match.id, isEditing)} primary={true} className="flex-1">
+                <Play className="w-4 h-4" /> {isEditing ? 'Guardar' : 'Registrar'}
+              </Button>
+              {isEditing && (
+                <Button onClick={() => setEditingMatchId(null)} primary={false} className="flex-1">
+                  Cancelar
+                </Button>
+              )}
+            </>
+          ) : (
+            <div className="text-green-600 font-semibold flex items-center justify-center gap-4 w-full">
+              <span>Ganador: {match.winnerId === match.team1.id ? match.team1.name : match.team2.name}</span>
+              <Button onClick={() => setEditingMatchId(match.id)} primary={false} className="bg-yellow-100 text-yellow-700 hover:bg-yellow-200">
+                <Pencil className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    );
+  };
 
   return (
     <motion.div className="container mx-auto p-8 bg-white rounded-3xl shadow-xl my-8" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
