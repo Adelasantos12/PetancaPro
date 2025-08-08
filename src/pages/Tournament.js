@@ -16,6 +16,7 @@ const Tournament = () => {
   const [tournamentPhase, setTournamentPhase] = useLocalStorage('petanca-phase', 'swiss');
   const [knockoutBrackets, setKnockoutBrackets] = useLocalStorage('petanca-knockout', null);
   const [editingMatchId, setEditingMatchId] = useState(null);
+  const [matchHistory, setMatchHistory] = useLocalStorage('petanca-match-history', []);
 
   useEffect(() => {
     // When the component mounts, check if a tournament is already in progress.
@@ -40,7 +41,6 @@ const Tournament = () => {
           })));
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // This effect should only run once on mount
 
   const shuffleArray = (array) => {
@@ -137,6 +137,7 @@ const Tournament = () => {
       }
     }
     setMatches(newMatches);
+    setMatchHistory(prev => [...prev, ...newMatches]);
     setCurrentRound(prev => prev + 1);
     setShowRanking(false);
   };
@@ -161,47 +162,58 @@ const Tournament = () => {
   };
 
   const recordMatchResult = (matchId, isEditing = false) => {
-    const allPlayedMatches = [...matches];
-    const matchIndex = allPlayedMatches.findIndex(m => m.id === matchId);
-    if (matchIndex === -1) return;
+    // Find the match in the current round's matches
+    const currentMatchIndex = matches.findIndex(m => m.id === matchId);
+    if (currentMatchIndex === -1) return;
 
-    let matchToUpdate = { ...allPlayedMatches[matchIndex] };
+    let matchToUpdate = { ...matches[currentMatchIndex] };
 
+    // Validate scores
     if (matchToUpdate.score1 === '' || matchToUpdate.score2 === '') { alert('Por favor, introduce una puntuación para ambos equipos.'); return; }
     const score1 = parseInt(matchToUpdate.score1, 10);
     const score2 = parseInt(matchToUpdate.score2, 10);
     if (isNaN(score1) || isNaN(score2)) { alert('Por favor, introduce puntuaciones válidas.'); return; }
     if (score1 === score2) { alert('Empate no permitido en petanca. Debe haber un ganador.'); return; }
 
+    // Update the match details
     const winnerId = score1 > score2 ? matchToUpdate.team1.id : matchToUpdate.team2.id;
     matchToUpdate.winnerId = winnerId;
     matchToUpdate.played = true;
-    allPlayedMatches[matchIndex] = matchToUpdate;
-    setMatches(allPlayedMatches);
 
+    // Update the match in the current round's state
+    const updatedCurrentMatches = [...matches];
+    updatedCurrentMatches[currentMatchIndex] = matchToUpdate;
+    setMatches(updatedCurrentMatches);
+
+    // Update the match in the persistent history
+    const historyIndex = matchHistory.findIndex(m => m.id === matchId);
+    const updatedHistory = [...matchHistory];
+    if (historyIndex > -1) {
+      updatedHistory[historyIndex] = matchToUpdate;
+    } else {
+      // This should not happen if generation logic is correct, but as a fallback
+      updatedHistory.push(matchToUpdate);
+    }
+    setMatchHistory(updatedHistory);
+
+    // Get the IDs of the teams whose stats need recalculation
     const teamsToUpdateIds = [matchToUpdate.team1.id, matchToUpdate.team2.id];
 
-    // Recalculate stats from scratch for the affected teams
+    // Recalculate stats from the single source of truth: the updated match history
     const updatedTeams = teams.map(team => {
       if (!teamsToUpdateIds.includes(team.id)) {
         return team;
       }
 
-      // Reset stats before recalculating
-      let newWins = 0;
-      let newLosses = 0;
-      let newPoints = 0;
-      let newScoreDifference = 0;
+      // Reset stats for recalculation
+      let newWins = 0, newLosses = 0, newPoints = 0, newScoreDifference = 0;
       let newPastOpponents = [];
 
-      // Recalculate from all played matches
-      allPlayedMatches.forEach(playedMatch => {
-        if (!playedMatch.played) return;
-
-        if (playedMatch.team1.id === team.id || playedMatch.team2.id === team.id) {
+      // Recalculate using the full, updated history
+      updatedHistory.forEach(playedMatch => {
+        if (playedMatch.played && (playedMatch.team1.id === team.id || playedMatch.team2.id === team.id)) {
           const isTeam1 = playedMatch.team1.id === team.id;
-          const opponentId = isTeam1 ? playedMatch.team2.id : playedMatch.team1.id;
-          newPastOpponents.push(opponentId);
+          newPastOpponents.push(isTeam1 ? playedMatch.team2.id : playedMatch.team1.id);
 
           if (playedMatch.winnerId === team.id) {
             newWins++;
@@ -211,7 +223,9 @@ const Tournament = () => {
           }
           const s1 = parseInt(playedMatch.score1, 10);
           const s2 = parseInt(playedMatch.score2, 10);
-          newScoreDifference += isTeam1 ? (s1 - s2) : (s2 - s1);
+          if(!isNaN(s1) && !isNaN(s2)) {
+            newScoreDifference += isTeam1 ? (s1 - s2) : (s2 - s1);
+          }
         }
       });
 
@@ -225,7 +239,7 @@ const Tournament = () => {
         pastOpponents: newPastOpponents,
       };
 
-      // Handle reclassification category update separately
+      // Handle reclassification category update
       if (tournamentPhase === 'reclassification' && matchToUpdate.id === matchId) {
         const won = team.id === winnerId;
         if (team.category === 'A') updatedTeam.category = won ? 'A' : 'AA';
@@ -312,14 +326,17 @@ const Tournament = () => {
     const matchesA = makeMatches(teamsA, 'reclass');
     const matchesB = makeMatches(teamsB, 'reclass');
     const matchesC = makeMatches(teamsC, 'knockout');
+    const allNewMatches = [...matchesA, ...matchesB, ...matchesC];
 
-    setMatches([...matchesA, ...matchesB, ...matchesC]);
+    setMatches(allNewMatches);
+    setMatchHistory(prev => [...prev, ...allNewMatches]);
     setTournamentPhase('reclassification');
   };
 
   const generateKnockoutBrackets = () => {
     const categories = ['A', 'AA', 'B', 'BB', 'C'];
     const brackets = {};
+    const allNewMatches = [];
     categories.forEach(category => {
       const categoryTeams = teams.filter(t => t.category === category).sort((a, b) => a.day1Rank - b.day1Rank);
       const newMatches = [];
@@ -330,10 +347,12 @@ const Tournament = () => {
         }
       }
       brackets[category] = newMatches;
+      allNewMatches.push(...newMatches);
     });
     setKnockoutBrackets(brackets);
     setTournamentPhase('knockout');
-    setMatches(Object.values(brackets).flat());
+    setMatches(allNewMatches);
+    setMatchHistory(prev => [...prev, ...allNewMatches]);
   };
 
   const renderMatch = (match) => {
