@@ -54,10 +54,28 @@ const Tournament = () => {
   };
 
   const getRankedTeams = () => {
-    return [...teams].sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
-      return b.coefficient - a.coefficient;
-    });
+    const sortedTeams = [...teams];
+    const categoryOrder = { 'A': 1, 'AA': 2, 'B': 3, 'BB': 4, 'C': 5 };
+
+    // After reclassification, group by category first
+    if (tournamentPhase === 'reclassification_pending' || tournamentPhase === 'reclassification' || tournamentPhase === 'knockout') {
+      sortedTeams.sort((a, b) => {
+        const orderA = categoryOrder[a.category] || 99;
+        const orderB = categoryOrder[b.category] || 99;
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        // If in the same category, sort by day1Rank
+        return a.day1Rank - b.day1Rank;
+      });
+    } else {
+      // Standard ranking for Swiss rounds
+      sortedTeams.sort((a, b) => {
+        if (b.points !== a.points) return b.points - a.points;
+        return b.coefficient - a.coefficient;
+      });
+    }
+    return sortedTeams;
   };
 
   const generateMatches = () => {
