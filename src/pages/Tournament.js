@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
-import { Shuffle, Play, ListOrdered, Award, UserCheck, FileDown } from 'lucide-react';
+import { Shuffle, Play, ListOrdered, Award, UserCheck, FileDown, Pencil } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import Bracket from '../components/Bracket';
@@ -15,6 +15,7 @@ const Tournament = () => {
   const [byeTeam, setByeTeam] = useLocalStorage('petanca-bye', null);
   const [tournamentPhase, setTournamentPhase] = useLocalStorage('petanca-phase', 'swiss');
   const [knockoutBrackets, setKnockoutBrackets] = useLocalStorage('petanca-knockout', null);
+  const [editingMatchId, setEditingMatchId] = useState(null);
 
   useEffect(() => {
     // When the component mounts, check if a tournament is already in progress.
@@ -141,56 +142,97 @@ const Tournament = () => {
     }
   };
 
-  const recordMatchResult = (matchId) => {
-    const matchIndex = matches.findIndex(m => m.id === matchId);
+  const recordMatchResult = (matchId, isEditing = false) => {
+    const allPlayedMatches = [...matches];
+    const matchIndex = allPlayedMatches.findIndex(m => m.id === matchId);
     if (matchIndex === -1) return;
 
-    let matchToEnd = { ...matches[matchIndex] };
+    let matchToUpdate = { ...allPlayedMatches[matchIndex] };
 
-    if (matchToEnd.score1 === '' || matchToEnd.score2 === '') { alert('Por favor, introduce una puntuación para ambos equipos.'); return; }
-    const score1 = parseInt(matchToEnd.score1, 10);
-    const score2 = parseInt(matchToEnd.score2, 10);
+    if (matchToUpdate.score1 === '' || matchToUpdate.score2 === '') { alert('Por favor, introduce una puntuación para ambos equipos.'); return; }
+    const score1 = parseInt(matchToUpdate.score1, 10);
+    const score2 = parseInt(matchToUpdate.score2, 10);
     if (isNaN(score1) || isNaN(score2)) { alert('Por favor, introduce puntuaciones válidas.'); return; }
     if (score1 === score2) { alert('Empate no permitido en petanca. Debe haber un ganador.'); return; }
 
-    const winnerId = score1 > score2 ? matchToEnd.team1.id : matchToEnd.team2.id;
-    matchToEnd.winnerId = winnerId;
-    matchToEnd.played = true;
+    const winnerId = score1 > score2 ? matchToUpdate.team1.id : matchToUpdate.team2.id;
+    matchToUpdate.winnerId = winnerId;
+    matchToUpdate.played = true;
+    allPlayedMatches[matchIndex] = matchToUpdate;
+    setMatches(allPlayedMatches);
 
-    const updatedMatches = [...matches];
-    updatedMatches[matchIndex] = matchToEnd;
-    setMatches(updatedMatches);
+    const teamsToUpdateIds = [matchToUpdate.team1.id, matchToUpdate.team2.id];
 
-    setTeams(prevTeams => prevTeams.map(team => {
-      if (team.id !== matchToEnd.team1.id && team.id !== matchToEnd.team2.id) return team;
-      if (tournamentPhase === 'swiss') {
-        const points = (team.id === winnerId) ? 1 : 0;
-        const diff = (team.id === matchToEnd.team1.id) ? (score1 - score2) : (score2 - score1);
-        const newPoints = team.points + points;
-        const newScoreDifference = team.scoreDifference + diff;
-        return { ...team, wins: team.wins + points, losses: team.losses + (1 - points), points: newPoints, scoreDifference: newScoreDifference, coefficient: newPoints + newScoreDifference, pastOpponents: [...team.pastOpponents, team.id === matchToEnd.team1.id ? matchToEnd.team2.id : matchToEnd.team1.id] };
+    // Recalculate stats from scratch for the affected teams
+    const updatedTeams = teams.map(team => {
+      if (!teamsToUpdateIds.includes(team.id)) {
+        return team;
       }
-      if (tournamentPhase === 'reclassification') {
+
+      // Reset stats before recalculating
+      let newWins = 0;
+      let newLosses = 0;
+      let newPoints = 0;
+      let newScoreDifference = 0;
+      let newPastOpponents = [];
+
+      // Recalculate from all played matches
+      allPlayedMatches.forEach(playedMatch => {
+        if (!playedMatch.played) return;
+
+        if (playedMatch.team1.id === team.id || playedMatch.team2.id === team.id) {
+          const isTeam1 = playedMatch.team1.id === team.id;
+          const opponentId = isTeam1 ? playedMatch.team2.id : playedMatch.team1.id;
+          newPastOpponents.push(opponentId);
+
+          if (playedMatch.winnerId === team.id) {
+            newWins++;
+            newPoints++;
+          } else {
+            newLosses++;
+          }
+          const s1 = parseInt(playedMatch.score1, 10);
+          const s2 = parseInt(playedMatch.score2, 10);
+          newScoreDifference += isTeam1 ? (s1 - s2) : (s2 - s1);
+        }
+      });
+
+      const updatedTeam = {
+        ...team,
+        wins: newWins,
+        losses: newLosses,
+        points: newPoints,
+        scoreDifference: newScoreDifference,
+        coefficient: newPoints + newScoreDifference,
+        pastOpponents: newPastOpponents,
+      };
+
+      // Handle reclassification category update separately
+      if (tournamentPhase === 'reclassification' && matchToUpdate.id === matchId) {
         const won = team.id === winnerId;
-        let newCategory = team.category;
-        if (team.category === 'A') newCategory = won ? 'A' : 'AA';
-        if (team.category === 'B') newCategory = won ? 'B' : 'BB';
-        return { ...team, category: newCategory };
+        if (team.category === 'A') updatedTeam.category = won ? 'A' : 'AA';
+        if (team.category === 'B') updatedTeam.category = won ? 'B' : 'BB';
       }
-      return team;
-    }));
 
+      return updatedTeam;
+    });
+
+    setTeams(updatedTeams);
+
+    // Update knockout brackets if necessary
     if (tournamentPhase === 'knockout') {
       const updatedBrackets = { ...knockoutBrackets };
       for (const category in updatedBrackets) {
         const idx = updatedBrackets[category].findIndex(m => m.id === matchId);
         if (idx > -1) {
-          updatedBrackets[category][idx] = matchToEnd;
+          updatedBrackets[category][idx] = matchToUpdate;
           break;
         }
       }
       setKnockoutBrackets(updatedBrackets);
     }
+
+    setEditingMatchId(null); // Exit editing mode
   };
 
   const allMatchesPlayed = matches.length > 0 && matches.every(match => match.played);
@@ -276,19 +318,44 @@ const Tournament = () => {
     setMatches(Object.values(brackets).flat());
   };
 
-  const renderMatch = (match) => (
-    <motion.div key={match.id} className="bg-white rounded-xl shadow-md p-4 border border-gray-200 flex flex-col md:flex-row items-center justify-between gap-4" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
-      <div className="flex-1 text-center md:text-left"><p className="font-bold text-lg text-gray-800">{match.team1.name}</p><p className="text-sm text-gray-500">Capitán: {match.team1.captain}</p></div>
-      <div className="flex items-center gap-2">
-        <Input type="number" value={match.score1} onChange={(e) => handleScoreChange(match.id, 1, e.target.value)} className="w-20 text-center" disabled={match.played} />
-        <span className="font-bold text-xl text-gray-600">vs</span>
-        <Input type="number" value={match.score2} onChange={(e) => handleScoreChange(match.id, 2, e.target.value)} className="w-20 text-center" disabled={match.played} />
-      </div>
-      <div className="flex-1 text-center md:text-right"><p className="font-bold text-lg text-gray-800">{match.team2.name}</p><p className="text-sm text-gray-500">Capitán: {match.team2.captain}</p></div>
-      {!match.played && <Button onClick={() => recordMatchResult(match.id)} primary={true} className="w-full md:w-auto"><Play className="w-4 h-4" /> Registrar</Button>}
-      {match.played && <div className="text-green-600 font-semibold flex items-center gap-2"><Award className="w-5 h-5" /><span>Ganador: {match.winnerId === match.team1.id ? match.team1.name : match.team2.name}</span></div>}
-    </motion.div>
-  );
+  const renderMatch = (match) => {
+    const isEditing = editingMatchId === match.id;
+    const isPlayed = match.played && !isEditing;
+
+    return (
+      <motion.div key={match.id} className="bg-white rounded-xl shadow-md p-4 border border-gray-200 flex flex-col md:flex-row items-center justify-between gap-4" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
+        <div className="flex-1 text-center md:text-left"><p className="font-bold text-lg text-gray-800">{match.team1.name}</p><p className="text-sm text-gray-500">Capitán: {match.team1.captain}</p></div>
+        <div className="flex items-center gap-2">
+          <Input type="number" value={match.score1} onChange={(e) => handleScoreChange(match.id, 1, e.target.value)} className="w-20 text-center" disabled={isPlayed} />
+          <span className="font-bold text-xl text-gray-600">vs</span>
+          <Input type="number" value={match.score2} onChange={(e) => handleScoreChange(match.id, 2, e.target.value)} className="w-20 text-center" disabled={isPlayed} />
+        </div>
+        <div className="flex-1 text-center md:text-right"><p className="font-bold text-lg text-gray-800">{match.team2.name}</p><p className="text-sm text-gray-500">Capitán: {match.team2.captain}</p></div>
+
+        <div className="w-full md:w-auto flex gap-2">
+          {!match.played || isEditing ? (
+            <>
+              <Button onClick={() => recordMatchResult(match.id, isEditing)} primary={true} className="flex-1">
+                <Play className="w-4 h-4" /> {isEditing ? 'Guardar' : 'Registrar'}
+              </Button>
+              {isEditing && (
+                <Button onClick={() => setEditingMatchId(null)} primary={false} className="flex-1">
+                  Cancelar
+                </Button>
+              )}
+            </>
+          ) : (
+            <div className="text-green-600 font-semibold flex items-center justify-center gap-4 w-full">
+              <span>Ganador: {match.winnerId === match.team1.id ? match.team1.name : match.team2.name}</span>
+              <Button onClick={() => setEditingMatchId(match.id)} primary={false} className="bg-yellow-100 text-yellow-700 hover:bg-yellow-200">
+                <Pencil className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    );
+  };
 
   return (
     <motion.div className="container mx-auto p-8 bg-white rounded-3xl shadow-xl my-8" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
