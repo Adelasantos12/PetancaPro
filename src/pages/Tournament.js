@@ -7,7 +7,7 @@ import Input from '../components/Input';
 import Bracket from '../components/Bracket';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 
-const Tournament = ({ registeredTeams }) => {
+const Tournament = () => {
   const [teams, setTeams] = useLocalStorage('petanca-teams', []);
   const [currentRound, setCurrentRound] = useLocalStorage('petanca-round', 0);
   const [matches, setMatches] = useLocalStorage('petanca-matches', []);
@@ -17,23 +17,30 @@ const Tournament = ({ registeredTeams }) => {
   const [knockoutBrackets, setKnockoutBrackets] = useLocalStorage('petanca-knockout', null);
 
   useEffect(() => {
-    if (registeredTeams.length > 0 && teams.length === 0) {
-      setTeams(registeredTeams
-        .filter(team => team.attended)
-        .map(team => ({
-          ...team,
-          wins: 0,
-          losses: 0,
-          points: 0,
-          scoreDifference: 0,
-          coefficient: 0,
-          pastOpponents: [],
-          receivedBye: false,
-          category: null,
-          day1Rank: 0,
-        })));
+    // When the component mounts, check if a tournament is already in progress.
+    // If not (i.e., round is 0), initialize the tournament teams
+    // from the list of registered teams in localStorage.
+    if (currentRound === 0) {
+      const registeredTeams = JSON.parse(localStorage.getItem('petancapro-teams') || '[]');
+      if (registeredTeams.length > 0) {
+        setTeams(registeredTeams
+          .filter(team => team.attended)
+          .map(team => ({
+            ...team,
+            wins: 0,
+            losses: 0,
+            points: 0,
+            scoreDifference: 0,
+            coefficient: 0,
+            pastOpponents: [],
+            receivedBye: false,
+            category: null,
+            day1Rank: 0,
+          })));
+      }
     }
-  }, [registeredTeams, teams.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // This effect should only run once on mount
 
   const shuffleArray = (array) => {
     let currentIndex = array.length, randomIndex;
