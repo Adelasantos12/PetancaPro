@@ -41,7 +41,7 @@ const Tournament = () => {
           })));
       }
     }
-  }, []); // This effect should only run once on mount
+  }, [currentRound, setTeams]);
 
   const shuffleArray = (array) => {
     let currentIndex = array.length, randomIndex;
