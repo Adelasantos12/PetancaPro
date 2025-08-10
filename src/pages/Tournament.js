@@ -19,6 +19,24 @@ const Tournament = () => {
   const [matchHistory, setMatchHistory] = useLocalStorage('petanca-match-history', []);
 
   useEffect(() => {
+    const handleGoBack = () => {
+      if (currentRound > 1) {
+        const previousRound = currentRound - 1;
+        const roundMatches = matchHistory.filter(match => match.id.includes(`match-${previousRound}-`));
+        setMatches(roundMatches);
+        setCurrentRound(previousRound);
+      } else {
+        console.log("Cannot go back from round 1.");
+      }
+    };
+
+    window.addEventListener('petanca-back-button-clicked', handleGoBack);
+    return () => {
+      window.removeEventListener('petanca-back-button-clicked', handleGoBack);
+    };
+  }, [currentRound, matchHistory, setMatches, setCurrentRound]);
+
+  useEffect(() => {
     // When the component mounts, check if a tournament is already in progress.
     // If not (i.e., round is 0), initialize the tournament teams
     // from the list of registered teams in localStorage.

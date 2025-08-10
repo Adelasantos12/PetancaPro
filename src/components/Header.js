@@ -20,6 +20,15 @@ const Header = ({ title, subtitle }) => {
     }
   };
 
+  const handleBack = () => {
+    if (location.pathname === '/tournament') {
+      const event = new CustomEvent('petanca-back-button-clicked');
+      window.dispatchEvent(event);
+    } else {
+      navigate(-1);
+    }
+  };
+
   return (
     <motion.header
       className="bg-gradient-to-r from-blue-600 to-purple-700 text-white p-6 rounded-b-3xl shadow-lg"
@@ -31,7 +40,7 @@ const Header = ({ title, subtitle }) => {
         <div className="flex items-center gap-4">
           {showBackButton && (
             <motion.button
-              onClick={() => navigate(-1)}
+              onClick={handleBack}
               className="p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
