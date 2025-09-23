@@ -45,6 +45,16 @@ const Home = () => {
           </Button>
         </Link>
       </motion.div>
+      <motion.div
+        className="mt-12"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.8, duration: 0.5 }}
+      >
+        <Link to="/adela-santos" className="text-sm text-gray-500 hover:text-gray-700 hover:underline">
+          View academic profile
+        </Link>
+      </motion.div>
     </motion.div>
   );
 };
