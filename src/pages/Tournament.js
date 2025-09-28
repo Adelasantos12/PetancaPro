@@ -18,25 +18,23 @@ const Tournament = () => {
   const [editingMatchId, setEditingMatchId] = useState(null);
   const [matchHistory, setMatchHistory] = useLocalStorage('petanca-match-history', []);
 
-  const goBackRound = () => {
-    if (currentRound > 1) {
-      const previousRound = currentRound - 1;
-      const roundMatches = matchHistory.filter(match => match.id.includes(`match-${previousRound}-`));
-      setMatches(roundMatches);
-      setCurrentRound(previousRound);
-    } else {
-      // If on round 1, navigate to home or another appropriate page
-      // For now, let's just log it. A navigation could be added here.
-      console.log("Cannot go back from round 1.");
-    }
-  };
-
   useEffect(() => {
-    window.addEventListener('petanca-back-button-clicked', goBackRound);
-    return () => {
-      window.removeEventListener('petanca-back-button-clicked', goBackRound);
+    const handleGoBack = () => {
+      if (currentRound > 1) {
+        const previousRound = currentRound - 1;
+        const roundMatches = matchHistory.filter(match => match.id.includes(`match-${previousRound}-`));
+        setMatches(roundMatches);
+        setCurrentRound(previousRound);
+      } else {
+        console.log("Cannot go back from round 1.");
+      }
     };
-  }, [currentRound, matchHistory]); // Rerun if state changes
+
+    window.addEventListener('petanca-back-button-clicked', handleGoBack);
+    return () => {
+      window.removeEventListener('petanca-back-button-clicked', handleGoBack);
+    };
+  }, [currentRound, matchHistory, setMatches, setCurrentRound]);
 
   useEffect(() => {
     // When the component mounts, check if a tournament is already in progress.
