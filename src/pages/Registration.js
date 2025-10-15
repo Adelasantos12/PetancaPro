@@ -36,7 +36,7 @@ const Registration = () => {
   };
 
   const handleAddOrUpdateTeam = () => {
-    if (teams.length >= 40 && !isEditing) {
+    if (teams.length >= 58 && !isEditing) {
       setError('No se pueden registrar más de 40 equipos.');
       return;
     }
@@ -157,7 +157,7 @@ const Registration = () => {
               onClick={handleAddOrUpdateTeam}
               className="w-full"
               primary={!isEditing}
-              disabled={teams.length >= 40 && !isEditing}
+              disabled={teams.length >=58 && !isEditing}
             >
               {isEditing ? (
                 <>
