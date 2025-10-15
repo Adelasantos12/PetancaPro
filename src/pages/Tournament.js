@@ -307,12 +307,29 @@ const Tournament = () => {
 
   const assignCategories = () => {
     const ranked = getRankedTeams();
+    const totalTeams = ranked.length;
+    let catASize, catBSize;
+
+    if (totalTeams >= 58) {
+      catASize = 20;
+      catBSize = 20;
+    } else {
+      // Original logic for other cases
+      catASize = 16;
+      catBSize = 16;
+    }
+
     const updatedTeams = teams.map((team) => {
       const rankIndex = ranked.findIndex(t => t.id === team.id);
       let category = null;
-      if (rankIndex < 16) category = 'A';
-      else if (rankIndex < 32) category = 'B';
-      else category = 'C';
+
+      if (rankIndex < catASize) {
+        category = 'A';
+      } else if (rankIndex < catASize + catBSize) {
+        category = 'B';
+      } else {
+        category = 'C';
+      }
       return { ...team, category, day1Rank: rankIndex + 1 };
     });
     setTeams(updatedTeams);
@@ -328,10 +345,10 @@ const Tournament = () => {
 
     const makeMatches = (group, type, roundName) => {
       const newMatches = [];
-      const mid = group.length / 2;
+      const mid = Math.floor(group.length / 2);
       for (let i = 0; i < mid; i++) {
         newMatches.push({
-          id: `${type}-${group[i].category}-${i}`,
+          id: `${type}-${(group[i].category || 'C')}-${i}`,
           team1: group[i],
           team2: group[group.length - 1 - i],
           score1: '', score2: '', winnerId: null, played: false,
@@ -343,9 +360,19 @@ const Tournament = () => {
 
     const reclassMatches = makeMatches(teamsA, 'reclass', 'Reclasificación');
     const reclassMatchesB = makeMatches(teamsB, 'reclass', 'Reclasificación');
-    const cQuarterFinals = makeMatches(teamsC, 'knockout-C', 'C - Cuartos');
     
-    const allNewMatches = [...reclassMatches, ...reclassMatchesB, ...cQuarterFinals];
+    let cMatches = [];
+    // With 18 teams in C, we need a preliminary round to get to 16
+    if (teamsC.length === 18) {
+      const prelimTeams = teamsC.slice(14); // Last 4 teams (ranks 15, 16, 17, 18)
+      cMatches.push({ id: 'knockout-C-prelim-0', team1: prelimTeams[0], team2: prelimTeams[3], score1: '', score2: '', winnerId: null, played: false, roundName: 'C - Preliminar' });
+      cMatches.push({ id: 'knockout-C-prelim-1', team1: prelimTeams[1], team2: prelimTeams[2], score1: '', score2: '', winnerId: null, played: false, roundName: 'C - Preliminar' });
+    } else {
+       // Fallback for other numbers
+      cMatches = makeMatches(teamsC, 'knockout-C', `C - Ronda 1`);
+    }
+
+    const allNewMatches = [...reclassMatches, ...reclassMatchesB, ...cMatches];
 
     setMatches(allNewMatches);
     setMatchHistory(prev => [...prev, ...allNewMatches]);
@@ -354,42 +381,49 @@ const Tournament = () => {
   
   const generateKnockoutBrackets = () => {
     const finalBrackets = {};
-    const finalMatches = [];
+    let finalMatches = [];
     const mainCategories = ['A', 'AA', 'B', 'BB'];
 
-    // Generate Quarterfinals for A, AA, B, BB
+    const generateRound = (teams, category, roundName) => {
+        const matches = [];
+        const mid = Math.floor(teams.length / 2);
+        for (let i = 0; i < mid; i++) {
+            matches.push({ id: `knockout-${category}-${roundName.toLowerCase().replace(' ','-')}-${i}`, team1: teams[i], team2: teams[teams.length - 1 - i], score1: '', score2: '', winnerId: null, played: false, roundName: `${category} - ${roundName}` });
+        }
+        return matches;
+    };
+
     mainCategories.forEach(category => {
       const categoryTeams = teams.filter(t => t.category === category).sort((a, b) => a.day1Rank - b.day1Rank);
-      const newMatches = [];
-      if (categoryTeams.length >= 2) {
-        const mid = categoryTeams.length / 2;
-        for (let i = 0; i < mid; i++) {
-          newMatches.push({ id: `knockout-${category}-qf-${i}`, team1: categoryTeams[i], team2: categoryTeams[categoryTeams.length - 1 - i], score1: '', score2: '', winnerId: null, played: false, roundName: `${category} - Cuartos` });
-        }
+      if (categoryTeams.length === 10) {
+        // Prelim round to get to 8
+        const prelimMatches = generateRound(categoryTeams.slice(6), category, 'Preliminar');
+        finalMatches.push(...prelimMatches);
+        finalBrackets[category] = prelimMatches;
+      } else if (categoryTeams.length === 8) {
+        // Quarterfinals
+        const qfMatches = generateRound(categoryTeams, category, 'Cuartos');
+        finalMatches.push(...qfMatches);
+        finalBrackets[category] = qfMatches;
       }
-      finalBrackets[category] = newMatches;
-      finalMatches.push(...newMatches);
+      // Add more cases if other numbers are possible
     });
 
-    // Generate Semifinals for C
-    const cQuarterFinalMatches = matchHistory.filter(m => m.id.startsWith('knockout-C'));
-    const cWinners = cQuarterFinalMatches.map(m => m.winnerId ? teams.find(t => t.id === m.winnerId) : null).filter(Boolean);
-    
-    const cSemifinals = [];
-    if (cWinners.length >= 2) {
-       cSemifinals.push({ id: 'knockout-C-sf-0', team1: cWinners[0], team2: cWinners[1], score1: '', score2: '', winnerId: null, played: false, roundName: 'C - Semifinal' });
+    // Handle Category C
+    const cPrelimWinners = matchHistory.filter(m => m.id.startsWith('knockout-C-prelim') && m.winnerId).map(m => teams.find(t => t.id === m.winnerId)).filter(Boolean);
+    const cTeamsWithBye = teams.filter(t => t.category === 'C').sort((a, b) => a.day1Rank - b.day1Rank).slice(0, 14);
+    const cRoundOf16Teams = [...cTeamsWithBye, ...cPrelimWinners].sort((a, b) => a.day1Rank - b.day1Rank);
+
+    if (cRoundOf16Teams.length === 16) {
+        const cRoundOf16Matches = generateRound(cRoundOf16Teams, 'C', 'Octavos');
+        finalMatches.push(...cRoundOf16Matches);
+        finalBrackets['C'] = cRoundOf16Matches;
     }
-    if (cWinners.length >= 4) {
-       cSemifinals.push({ id: 'knockout-C-sf-1', team1: cWinners[2], team2: cWinners[3], score1: '', score2: '', winnerId: null, played: false, roundName: 'C - Semifinal' });
-    }
-    
-    finalBrackets['C'] = [...cQuarterFinalMatches, ...cSemifinals];
-    finalMatches.push(...cSemifinals);
 
     setKnockoutBrackets(finalBrackets);
     setTournamentPhase('knockout');
     setMatches(finalMatches);
-    setMatchHistory(prev => [...prev, ...cSemifinals]); // Only add the new semi-final matches
+    setMatchHistory(prev => [...prev, ...finalMatches]);
   };
 
   const renderMatch = (match) => {
