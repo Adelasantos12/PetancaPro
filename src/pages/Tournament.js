@@ -14,7 +14,6 @@ const Tournament = () => {
   const [showRanking, setShowRanking] = useLocalStorage('petanca-show-ranking', false);
   const [byeTeam, setByeTeam] = useLocalStorage('petanca-bye', null);
   const [tournamentPhase, setTournamentPhase] = useLocalStorage('petanca-phase', 'swiss');
-  const [knockoutBrackets, setKnockoutBrackets] = useLocalStorage('petanca-knockout', null);
   const [editingMatchId, setEditingMatchId] = useState(null);
   const [matchHistory, setMatchHistory] = useLocalStorage('petanca-match-history', []);
 
@@ -73,10 +72,10 @@ const Tournament = () => {
   
   const getRankedTeams = () => {
     const sortedTeams = [...teams];
-    const categoryOrder = { 'A': 1, 'AA': 2, 'B': 3, 'BB': 4, 'C': 5 };
+    const categoryOrder = { 'A': 1, 'AA': 2, 'B': 3, 'BB': 4, 'C': 5, 'CC': 6, 'Eliminado': 99 };
 
     // After reclassification, group by category first
-    if (tournamentPhase === 'reclassification_pending' || tournamentPhase === 'reclassification' || tournamentPhase === 'knockout') {
+    if (['reclassification_pending', 'reclassification', 'final_round'].includes(tournamentPhase)) {
       sortedTeams.sort((a, b) => {
         const orderA = categoryOrder[a.category] || 99;
         const orderB = categoryOrder[b.category] || 99;
@@ -89,6 +88,7 @@ const Tournament = () => {
     } else {
       // Standard ranking for Swiss rounds
       sortedTeams.sort((a, b) => {
+        if (b.wins !== a.wins) return b.wins - a.wins;
         if (b.points !== a.points) return b.points - a.points;
         return b.coefficient - a.coefficient;
       });
@@ -165,18 +165,6 @@ const Tournament = () => {
       match.id === matchId ? { ...match, [`score${teamNum}`]: value } : match
     );
     setMatches(updatedMatches);
-
-    if (tournamentPhase === 'knockout') {
-      const updatedBrackets = { ...knockoutBrackets };
-      for (const category in updatedBrackets) {
-        const matchIndex = updatedBrackets[category].findIndex(m => m.id === matchId);
-        if (matchIndex > -1) {
-          updatedBrackets[category][matchIndex][`score${teamNum}`] = value;
-          break;
-        }
-      }
-      setKnockoutBrackets(updatedBrackets);
-    }
   };
 
   const recordMatchResult = (matchId, isEditing = false) => {
@@ -198,9 +186,10 @@ const Tournament = () => {
     matchToUpdate.winnerId = winnerId;
     matchToUpdate.played = true;
 
-    // Update the match in the current round's state
-    const updatedCurrentMatches = [...matches];
-    updatedCurrentMatches[currentMatchIndex] = matchToUpdate;
+    // Update the match in the current round's state using .map for consistency
+    const updatedCurrentMatches = matches.map((match) =>
+      match.id === matchId ? matchToUpdate : match
+    );
     setMatches(updatedCurrentMatches);
 
     // Update the match in the persistent history
@@ -209,7 +198,6 @@ const Tournament = () => {
     if (historyIndex > -1) {
       updatedHistory[historyIndex] = matchToUpdate;
     } else {
-      // This should not happen if generation logic is correct, but as a fallback
       updatedHistory.push(matchToUpdate);
     }
     setMatchHistory(updatedHistory);
@@ -258,30 +246,18 @@ const Tournament = () => {
       };
 
       // Handle reclassification category update
-      if (tournamentPhase === 'reclassification' && matchToUpdate.roundName === 'Reclasificación') {
+      if (tournamentPhase === 'reclassification' && matchToUpdate.roundName.startsWith('Reclasificación')) {
         const won = team.id === winnerId;
-        if (team.category === 'A') updatedTeam.category = won ? 'A' : 'AA';
-        if (team.category === 'B') updatedTeam.category = won ? 'B' : 'BB';
+        const currentCategory = team.category;
+        if (currentCategory === 'A') updatedTeam.category = won ? 'A' : 'AA';
+        if (currentCategory === 'B') updatedTeam.category = won ? 'B' : 'BB';
+        if (currentCategory === 'C') updatedTeam.category = won ? 'C' : 'CC';
       }
 
       return updatedTeam;
     });
 
     setTeams(updatedTeams);
-    
-    // Update knockout brackets if necessary
-    if (tournamentPhase === 'knockout') {
-      const updatedBrackets = { ...knockoutBrackets };
-      for (const category in updatedBrackets) {
-        const idx = updatedBrackets[category].findIndex(m => m.id === matchId);
-        if (idx > -1) {
-          updatedBrackets[category][idx] = matchToUpdate;
-          break;
-        }
-      }
-      setKnockoutBrackets(updatedBrackets);
-    }
-
     setEditingMatchId(null); // Exit editing mode
   };
 
@@ -308,16 +284,14 @@ const Tournament = () => {
   const assignCategories = () => {
     const ranked = getRankedTeams();
     const totalTeams = ranked.length;
-    let catASize, catBSize;
 
-    if (totalTeams >= 58) {
-      catASize = 16;
-      catBSize = 16;
-    } else {
-      // Original logic for other cases
-      catASize = 16;
-      catBSize = 16;
+    if (totalTeams < 58) {
+      alert("Esta lógica de categorización está diseñada para al menos 58 equipos.");
     }
+
+    const catASize = 16;
+    const catBSize = 16;
+    const catCSize = 24;
 
     const updatedTeams = teams.map((team) => {
       const rankIndex = ranked.findIndex(t => t.id === team.id);
@@ -327,103 +301,105 @@ const Tournament = () => {
         category = 'A';
       } else if (rankIndex < catASize + catBSize) {
         category = 'B';
-      } else {
+      } else if (rankIndex < catASize + catBSize + catCSize) {
         category = 'C';
+      } else {
+        category = 'Bottom2';
       }
       return { ...team, category, day1Rank: rankIndex + 1 };
     });
     setTeams(updatedTeams);
     setTournamentPhase('reclassification_pending');
     setMatches([]);
-    setShowRanking(true); // Automatically show ranking for Day 2 start
+    setShowRanking(true);
   };
 
   const startDay2 = () => {
     const teamsA = teams.filter(t => t.category === 'A').sort((a, b) => a.day1Rank - b.day1Rank);
     const teamsB = teams.filter(t => t.category === 'B').sort((a, b) => a.day1Rank - b.day1Rank);
     const teamsC = teams.filter(t => t.category === 'C').sort((a, b) => a.day1Rank - b.day1Rank);
+    const teamsBottom2 = teams.filter(t => t.category === 'Bottom2').sort((a, b) => a.day1Rank - b.day1Rank);
 
-    const makeMatches = (group, type, roundName) => {
-      const newMatches = [];
-      const mid = Math.floor(group.length / 2);
-      for (let i = 0; i < mid; i++) {
-        newMatches.push({
-          id: `${type}-${(group[i].category || 'C')}-${i}`,
-          team1: group[i],
-          team2: group[group.length - 1 - i],
-          score1: '', score2: '', winnerId: null, played: false,
-          roundName: roundName
-        });
-      }
-      return newMatches;
+    const makeMatchesInOrder = (group, type, roundNamePrefix) => {
+        const newMatches = [];
+        const mid = Math.floor(group.length / 2);
+        for (let i = 0; i < mid; i++) {
+            newMatches.push({
+                id: `${type}-${group[i].category}-${i}`,
+                team1: group[i],
+                team2: group[group.length - 1 - i],
+                score1: '', score2: '', winnerId: null, played: false,
+                roundName: `${roundNamePrefix} ${group[i].category}`
+            });
+        }
+        return newMatches;
     };
 
-    const reclassMatches = makeMatches(teamsA, 'reclass', 'Reclasificación');
-    const reclassMatchesB = makeMatches(teamsB, 'reclass', 'Reclasificación');
-    
-    let cMatches = [];
-    // With 18 teams in C, we need a preliminary round to get to 16
-    if (teamsC.length === 18) {
-      const prelimTeams = teamsC.slice(14); // Last 4 teams (ranks 15, 16, 17, 18)
-      cMatches.push({ id: 'knockout-C-prelim-0', team1: prelimTeams[0], team2: prelimTeams[3], score1: '', score2: '', winnerId: null, played: false, roundName: 'C - Preliminar' });
-      cMatches.push({ id: 'knockout-C-prelim-1', team1: prelimTeams[1], team2: prelimTeams[2], score1: '', score2: '', winnerId: null, played: false, roundName: 'C - Preliminar' });
-    } else {
-       // Fallback for other numbers
-      cMatches = makeMatches(teamsC, 'knockout-C', `C - Ronda 1`);
-    }
+    const reclassMatchesA = makeMatchesInOrder(teamsA, 'reclass', 'Reclasificación');
+    const reclassMatchesB = makeMatchesInOrder(teamsB, 'reclass', 'Reclasificación');
+    const reclassMatchesC = makeMatchesInOrder(teamsC, 'reclass', 'Reclasificación');
+    const eliminationMatch = makeMatchesInOrder(teamsBottom2, 'elim', 'Eliminación');
 
-    const allNewMatches = [...reclassMatches, ...reclassMatchesB, ...cMatches];
+    const allNewMatches = [...reclassMatchesA, ...reclassMatchesB, ...reclassMatchesC, ...eliminationMatch];
 
     setMatches(allNewMatches);
     setMatchHistory(prev => [...prev, ...allNewMatches]);
     setTournamentPhase('reclassification');
   };
   
-  const generateKnockoutBrackets = () => {
-    const finalBrackets = {};
-    let finalMatches = [];
-    const mainCategories = ['A', 'AA', 'B', 'BB'];
-
-    const generateRound = (teams, category, roundName) => {
-        const matches = [];
-        const mid = Math.floor(teams.length / 2);
-        for (let i = 0; i < mid; i++) {
-            matches.push({ id: `knockout-${category}-${roundName.toLowerCase().replace(' ','-')}-${i}`, team1: teams[i], team2: teams[teams.length - 1 - i], score1: '', score2: '', winnerId: null, played: false, roundName: `${category} - ${roundName}` });
-        }
-        return matches;
-    };
-
-    mainCategories.forEach(category => {
-      const categoryTeams = teams.filter(t => t.category === category).sort((a, b) => a.day1Rank - b.day1Rank);
-      if (categoryTeams.length === 10) {
-        // Prelim round to get to 8
-        const prelimMatches = generateRound(categoryTeams.slice(6), category, 'Preliminar');
-        finalMatches.push(...prelimMatches);
-        finalBrackets[category] = prelimMatches;
-      } else if (categoryTeams.length === 8) {
-        // Quarterfinals
-        const qfMatches = generateRound(categoryTeams, category, 'Cuartos');
-        finalMatches.push(...qfMatches);
-        finalBrackets[category] = qfMatches;
-      }
-      // Add more cases if other numbers are possible
+  const finalizeAndGenerateFinalRound = () => {
+    // 1. Identify and mark the two eliminated teams based on worst record.
+    const allTeamsRankedForElimination = [...teams].sort((a, b) => {
+        if (a.wins !== b.wins) return a.wins - b.wins; // Fewer wins first
+        return a.scoreDifference - b.scoreDifference; // Lower score diff first
     });
 
-    // Handle Category C
-    const cPrelimWinners = matchHistory.filter(m => m.id.startsWith('knockout-C-prelim') && m.winnerId).map(m => teams.find(t => t.id === m.winnerId)).filter(Boolean);
-    const cTeamsWithBye = teams.filter(t => t.category === 'C').sort((a, b) => a.day1Rank - b.day1Rank).slice(0, 14);
-    const cRoundOf16Teams = [...cTeamsWithBye, ...cPrelimWinners].sort((a, b) => a.day1Rank - b.day1Rank);
+    const teamsToEliminate = allTeamsRankedForElimination.slice(0, 2);
+    const eliminatedTeamIds = teamsToEliminate.map(t => t.id);
 
-    if (cRoundOf16Teams.length === 16) {
-        const cRoundOf16Matches = generateRound(cRoundOf16Teams, 'C', 'Octavos');
-        finalMatches.push(...cRoundOf16Matches);
-        finalBrackets['C'] = cRoundOf16Matches;
-    }
+    const updatedTeams = teams.map(team => {
+        if (eliminatedTeamIds.includes(team.id)) {
+            return { ...team, category: 'Eliminado' };
+        }
+        return team;
+    });
 
-    setKnockoutBrackets(finalBrackets);
-    setTournamentPhase('knockout');
+    const activeTeams = updatedTeams.filter(t => t.category !== 'Eliminado');
+
+    // 2. Generate final round (round 7) matches
+    const finalMatches = [];
+    const categories = ['A', 'AA', 'B', 'BB', 'C', 'CC'];
+
+    const makeMatchesInOrder = (group, category) => {
+        const newMatches = [];
+        const sortedGroup = group.sort((a, b) => a.day1Rank - b.day1Rank);
+        for (let i = 0; i < sortedGroup.length; i += 2) {
+            if (sortedGroup[i+1]) {
+                newMatches.push({
+                    id: `final-${category}-${i/2}`,
+                    team1: sortedGroup[i],
+                    team2: sortedGroup[i+1],
+                    score1: '', score2: '', winnerId: null, played: false,
+                    roundName: `Ronda Final - Cat ${category}`
+                });
+            }
+        }
+        return newMatches;
+    };
+
+    categories.forEach(cat => {
+        const categoryTeams = activeTeams.filter(t => t.category === cat);
+        if (categoryTeams.length > 0) {
+            const roundMatches = makeMatchesInOrder(categoryTeams, cat);
+            finalMatches.push(...roundMatches);
+        }
+    });
+
+    setCurrentRound(prev => prev + 1); // This is round 7
+    setTeams(updatedTeams);
     setMatches(finalMatches);
     setMatchHistory(prev => [...prev, ...finalMatches]);
+    setTournamentPhase('final_round');
   };
 
   const renderMatch = (match) => {
@@ -504,42 +480,35 @@ const Tournament = () => {
           {tournamentPhase === 'reclassification_pending' && (
             <motion.div className="text-center mt-8 p-6 bg-green-50 rounded-2xl border border-green-200" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.5 }}>
               <h3 className="text-2xl font-semibold text-green-800 mb-4">¡Listo para el Día 2!</h3>
-              <p className="text-green-700 mb-6">Las categorías iniciales han sido asignadas. Es hora del partido de reclasificación y los cuartos de final de la Categoría C.</p>
-              <Button onClick={startDay2}><Play className="w-5 h-5" /> Iniciar Partidos del Día 2</Button>
+              <p className="text-green-700 mb-6">Las categorías iniciales han sido asignadas. Es hora de la ronda de reclasificación.</p>
+              <Button onClick={startDay2}><Play className="w-5 h-5" /> Iniciar Ronda 6</Button>
             </motion.div>
           )}
 
           {/* Reclassification Phase */}
           {tournamentPhase === 'reclassification' && (
             <>
-              <h3 className="text-2xl font-semibold text-gray-700 mb-5 text-center">Día 2 - Partidos de Avance</h3>
+              <h3 className="text-2xl font-semibold text-gray-700 mb-5 text-center">Ronda 6 - Reclasificación</h3>
               <div className="space-y-4 mb-8">
                 <AnimatePresence>
                   {matches.map(renderMatch)}
                 </AnimatePresence>
               </div>
-              {knockoutBrackets?.C && (
-                <div className="mt-8">
-                   <Bracket title="Categoría C - Cuartos de Final" matches={knockoutBrackets.C} color="red" />
-                </div>
-              )}
-              {allMatchesPlayed && <div className="text-center mt-8"><Button onClick={generateKnockoutBrackets}><Award className="w-5 h-5" /> Generar Brackets Finales</Button></div>}
+              {allMatchesPlayed && <div className="text-center mt-8"><Button onClick={finalizeAndGenerateFinalRound}><Award className="w-5 h-5" /> Finalizar Reclasificación y Generar Ronda Final</Button></div>}
             </>
           )}
 
-          {/* Knockout Phase */}
-          {tournamentPhase === 'knockout' && knockoutBrackets && (
+          {/* Final Round Phase */}
+          {tournamentPhase === 'final_round' && (
              <motion.div className="space-y-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <h2 className="text-3xl font-bold text-gray-800 text-center">Fase de Eliminatorias Finales</h2>
-              <p className="text-center text-gray-600">Registra los resultados de los cuartos de final a continuación.</p>
+              <h2 className="text-3xl font-bold text-gray-800 text-center">Ronda Final (Ronda 7)</h2>
               <div className="space-y-4 mb-8"><AnimatePresence>{matches.map(renderMatch)}</AnimatePresence></div>
-              <hr className="my-8"/>
-              <h3 className="text-2xl font-semibold text-gray-700 mb-5 text-center">Brackets de Eliminatorias</h3>
-              <Bracket title="Principal A - Cuartos de Final" matches={knockoutBrackets.A || []} color="blue" />
-              <Bracket title="Principal AA - Cuartos de Final" matches={knockoutBrackets.AA || []} color="purple" />
-              <Bracket title="Consolación B - Cuartos de Final" matches={knockoutBrackets.B || []} color="green" />
-              <Bracket title="Consolación BB - Cuartos de Final" matches={knockoutBrackets.BB || []} color="yellow" />
-              <Bracket title="Categoría C - Cuartos de Final" matches={knockoutBrackets.C || []} color="red" />
+              {allMatchesPlayed &&
+                <div className="text-center mt-8 p-6 bg-yellow-50 rounded-2xl border border-yellow-200">
+                  <h3 className="text-2xl font-semibold text-yellow-800">¡Torneo Finalizado!</h3>
+                  <p className="text-yellow-700 mt-2">Consulta el ranking final para ver los resultados.</p>
+                </div>
+              }
             </motion.div>
           )}
 
@@ -566,7 +535,16 @@ const Tournament = () => {
                           <td className="py-3 px-6 text-center">{team.losses}</td>
                           <td className="py-3 px-6 text-center font-bold">{team.points}</td>
                           <td className="py-3 px-6 text-center">{team.coefficient.toFixed(2)}</td>
-                          <td className="py-3 px-6 text-center"><span className={`px-3 py-1 rounded-full text-xs font-semibold ${team.category === 'A' ? 'bg-blue-100 text-blue-800' : team.category === 'AA' ? 'bg-purple-100 text-purple-800' : team.category === 'B' ? 'bg-green-100 text-green-800' : team.category === 'BB' ? 'bg-yellow-100 text-yellow-800' : team.category === 'C' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>{team.category || 'N/A'}</span></td>
+                          <td className="py-3 px-6 text-center"><span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            team.category === 'A' ? 'bg-blue-100 text-blue-800' :
+                            team.category === 'AA' ? 'bg-purple-100 text-purple-800' :
+                            team.category === 'B' ? 'bg-green-100 text-green-800' :
+                            team.category === 'BB' ? 'bg-yellow-100 text-yellow-800' :
+                            team.category === 'C' ? 'bg-red-100 text-red-800' :
+                            team.category === 'CC' ? 'bg-orange-100 text-orange-800' :
+                            team.category === 'Eliminado' ? 'bg-gray-300 text-gray-900' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>{team.category || 'N/A'}</span></td>
                         </motion.tr>
                       ))}
                     </tbody>
