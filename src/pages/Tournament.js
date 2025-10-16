@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
-import { Shuffle, Play, ListOrdered, Award, UserCheck, FileDown, Pencil } from 'lucide-react';
+import {Shuffle, Play, ListOrdered, Award, UserCheck, FileDown } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import { useLocalStorage } from '../hooks/useLocalStorage';
