@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { PlusCircle, Save, XCircle, AlertCircle, FileUp, Pencil } from 'lucide-react';
+import { PlusCircle, Save, XCircle, AlertCircle, FileUp, Pencil, CheckCircle2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Button from '../components/Button';
 import Input from '../components/Input';
@@ -20,6 +20,22 @@ const Registration = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState('');
   const [isImportView, setIsImportView] = useState(false);
+  const [teamsBeforeImport, setTeamsBeforeImport] = useState([]);
+  const [editingFromImport, setEditingFromImport] = useState(false);
+
+  const handleSelectAll = () => {
+    setTeams(prev => prev.map(team => ({ ...team, attended: true })));
+  };
+
+  const handleDeselectAll = () => {
+    setTeams(prev => prev.map(team => ({ ...team, attended: false })));
+  };
+
+  const handleCancelImport = () => {
+    setTeams(teamsBeforeImport);
+    setIsImportView(false);
+    setError('');
+  };
 
   const handleAttendanceChange = (teamId, isAttending) => {
     setTeams(prev =>
@@ -31,11 +47,13 @@ const Registration = () => {
 
   const handleEditFromImport = (id) => {
     handleEditTeam(id);
+    setEditingFromImport(true);
     setIsImportView(false);
   };
 
   const handleUpdateTeamFromImport = () => {
     handleAddOrUpdateTeam(); // La lógica existente de `handleAddOrUpdateTeam` ya actualiza el equipo
+    setEditingFromImport(false);
     setIsImportView(true); // Vuelve a la vista de importación
   };
 
@@ -44,6 +62,8 @@ const Registration = () => {
     if (!file) {
       return;
     }
+
+    setTeamsBeforeImport(teams); // Guardar el estado actual
 
     const reader = new FileReader();
     reader.onload = (evt) => {
@@ -55,14 +75,21 @@ const Registration = () => {
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
         const importedTeams = jsonData
+          .slice(1) // Omitir la primera fila (títulos)
           .map((row, index) => {
             const captainName = row[0] ? String(row[0]).trim() : '';
+            const player2 = row[1] ? String(row[1]).trim() : '';
+            const players = [captainName];
+            if (player2) {
+              players.push(player2);
+            }
+
             if (captainName) {
               return {
                 id: generateUniqueId(),
                 captain: captainName,
                 name: captainName,
-                players: [captainName],
+                players: players,
                 attended: false, // Por defecto no han asistido
               };
             }
@@ -179,7 +206,12 @@ const Registration = () => {
             <h3 className="text-2xl font-semibold text-gray-700">
               {isImportView ? 'Confirmar Asistencia' : isEditing ? 'Editar Equipo' : 'Registrar Nuevo Equipo'}
             </h3>
-            {!isImportView && (
+            {isImportView ? (
+              <Button onClick={handleCancelImport} primary={false}>
+                <XCircle className="w-5 h-5 mr-2" />
+                Cancelar Importación
+              </Button>
+            ) : (
               <div>
                 <input
                   type="file"
@@ -207,9 +239,20 @@ const Registration = () => {
           )}
 
           {isImportView ? (
-            <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-              {teams.map(team => (
-                <motion.div
+            <div>
+              <div className="flex justify-end gap-2 mb-4">
+                <Button onClick={handleSelectAll} primary={false} className="px-3 py-1 text-sm">
+                  <CheckCircle2 className="w-4 h-4 mr-1" />
+                  Todos
+                </Button>
+                <Button onClick={handleDeselectAll} primary={false} className="px-3 py-1 text-sm">
+                  <XCircle className="w-4 h-4 mr-1" />
+                  Ninguno
+                </Button>
+              </div>
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
+                {teams.map(team => (
+                  <motion.div
                   key={team.id}
                   className="flex items-center justify-between bg-white p-3 rounded-lg border shadow-sm"
                   initial={{ opacity: 0, x: -10 }}
@@ -230,6 +273,7 @@ const Registration = () => {
                   </div>
                 </motion.div>
               ))}
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -261,7 +305,7 @@ const Registration = () => {
               />
             </div>
             <Button
-              onClick={isEditing && teams.some(t => t.id === newTeam.id && t.attended === false) ? handleUpdateTeamFromImport : handleAddOrUpdateTeam}
+              onClick={editingFromImport ? handleUpdateTeamFromImport : handleAddOrUpdateTeam}
               className="w-full"
               primary={!isEditing}
               disabled={teams.length >= 58 && !isEditing}
@@ -290,8 +334,9 @@ const Registration = () => {
         </motion.div>
 
         {/* Lista de Equipos Registrados */}
-        <motion.div
-          className="bg-gray-50 p-6 rounded-2xl border border-gray-200 shadow-inner"
+        {!isImportView && (
+          <motion.div
+            className="bg-gray-50 p-6 rounded-2xl border border-gray-200 shadow-inner"
           initial={{ x: 20, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={{ duration: 0.5, delay: 0.3 }}
@@ -325,6 +370,7 @@ const Registration = () => {
             </Button>
           )}
         </motion.div>
+        )}
       </div>
     </motion.div>
   );
