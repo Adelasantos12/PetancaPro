@@ -311,8 +311,8 @@ const Tournament = () => {
     let catASize, catBSize;
 
     if (totalTeams >= 58) {
-      catASize = 20;
-      catBSize = 20;
+      catASize = 16;
+      catBSize = 16;
     } else {
       // Original logic for other cases
       catASize = 16;

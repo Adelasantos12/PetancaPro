@@ -34,7 +34,7 @@ const DonationModal = ({ isOpen, onClose, playerCount, paypalEmail }) => {
           </Button>
           <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">¡Gracias por participar!</h2>
           <p className="text-gray-600 mb-6 text-center">
-            Para ayudar a mantener este software, te invitamos a hacer una aportación voluntaria. La cantidad sugerida es de <span className="font-bold">${donationAmount}</span> ({playerCount} jugadores x $2).
+            Para ayudar a mantener estos torneos, te invitamos a hacer una aportación voluntaria. La cantidad sugerida es de <span className="font-bold">${donationAmount}</span> ({playerCount} jugadores x $2).
           </p>
           <div className="flex flex-col gap-4">
             <a
