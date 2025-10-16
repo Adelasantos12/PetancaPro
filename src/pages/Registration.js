@@ -6,11 +6,14 @@ import * as XLSX from 'xlsx';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import TeamCard from '../components/TeamCard';
+import DonationModal from '../components/DonationModal';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 
 const Registration = () => {
   const [teams, setTeams] = useLocalStorage('petancapro-teams', []);
   const navigate = useNavigate();
+  const [showDonationModal, setShowDonationModal] = useState(false);
+  const [attendingPlayerCount, setAttendingPlayerCount] = useState(0);
   const [newTeam, setNewTeam] = useState({
     id: '',
     captain: '',
@@ -181,8 +184,15 @@ const Registration = () => {
     }
     // Guardar solo los equipos que asisten en el localStorage para el torneo
     setTeams(attendingTeams);
-    navigate('/tournament');
+    const playerCount = attendingTeams.reduce((count, team) => count + team.players.length, 0);
+    setAttendingPlayerCount(playerCount);
+    setShowDonationModal(true);
     setError('');
+  };
+
+  const handleCloseModal = () => {
+    setShowDonationModal(false);
+    navigate('/tournament');
   };
 
   return (
@@ -364,14 +374,24 @@ const Registration = () => {
               )}
             </AnimatePresence>
           </div>
-          {teams.length > 0 && (
-            <Button onClick={handleSaveAllTeams} className="w-full mt-6">
-              <Save className="w-5 h-5" /> Iniciar Torneo
-            </Button>
-          )}
         </motion.div>
         )}
       </div>
+
+      {teams.length > 0 && (
+        <div className="mt-8 text-center">
+          <Button onClick={handleSaveAllTeams} className="w-full md:w-auto">
+            <Save className="w-5 h-5" /> Iniciar Torneo
+          </Button>
+        </div>
+      )}
+
+      <DonationModal
+        isOpen={showDonationModal}
+        onClose={handleCloseModal}
+        playerCount={attendingPlayerCount}
+        paypalEmail="adela.santos12@gmail.com"
+      />
     </motion.div>
   );
 };
