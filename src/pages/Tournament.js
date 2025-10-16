@@ -179,6 +179,7 @@ const Tournament = () => {
     const score1 = parseInt(matchToUpdate.score1, 10);
     const score2 = parseInt(matchToUpdate.score2, 10);
     if (isNaN(score1) || isNaN(score2)) { alert('Por favor, introduce puntuaciones válidas.'); return; }
+    if (score1 < 0 || score1 > 13 || score2 < 0 || score2 > 13) { alert('La puntuación debe estar entre 0 y 13.'); return; }
     if (score1 === score2) { alert('Empate no permitido en petanca. Debe haber un ganador.'); return; }
 
     // Update the match details
